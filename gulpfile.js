@@ -37,9 +37,9 @@ const app = {
 };
 
 app.srcScss = path.join(app.destBase, 'src/scss');
-app.destCss = path.join(app.destBase, 'destr/css');
+app.destCss = path.join(app.destBase, 'distr/css');
 app.srcJs = path.join(app.destBase, 'src/js');
-app.destrJs = path.join(app.destBase, 'destr/js');
+app.destJs = path.join(app.destBase, 'distr/js');
 
 gulp.task('clean', ['cleancss']);
 
@@ -80,7 +80,7 @@ gulp.task('js', function () {
             minified: true,
             sourceMaps: 'map'
         }))
-        .pipe(gulp.dest(app.destrJs))
+        .pipe(gulp.dest(app.destJs))
         .pipe($.livereload());
 });
 
