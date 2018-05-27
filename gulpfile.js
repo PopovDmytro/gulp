@@ -1,57 +1,107 @@
-"use strict";
+'use strict';
 
-const gulp = require('gulp');
-const stylus = require('gulp-stylus');
-const sourcemaps = require('gulp-sourcemaps');
-const concat = require('gulp-concat');
-const debug = require('gulp-debug');
-const gulpIf = require('gulp-if');
-const del = require('del');
-const newer = require('gulp-newer');// or gulp-changed
-const remember = require('gulp-remember');
-const path = require('path');
+const   gulp = require('gulp'),
+    $ = require('gulp-load-plugins')(),
+    watch = require('gulp-watch'),
+    path = require('path'),
+    rs = require('run-sequence'),
+    del = require('del'),
+    filter = require('gulp-filter'),
+    debug = require('gulp-debug');
+//styles
+const   postcss = require('gulp-postcss'),
+    autoprefixer = require('autoprefixer'),
+    atImport = require('postcss-import'),
+    mqpacker = require('css-mqpacker'),
+    cssnano = require('cssnano');
+//js
+const babel = require('gulp-babel');
 
-const cached = require('gulp-cached');
-const cache = require('gulp-cache');
+process.env.NODE_ENV = process.env.NODE_ENV ? process.env.NODE_ENV : 'development';
+const isDev = process.env.NODE_ENV === 'development';
 
-const isDevelopment = !process.env.NODE_ENV || process.env.NODE_ENV == 'development';
+/**
+ * Returns environment-dependant path
+ */
+function getDestPath(p) {
+    return path.join(app.destBase, (p || ''));
+}
 
-gulp.task('styles', function () {
+function getLoadFileInfo() {
+    return require('./loadfile.json');
+}
 
-  // console.log(require('stylus/lib/parser').cache); //stylus cache
+//path
+const app = {
+    destBase: __dirname
+};
 
-  return gulp.src('frontend/styles/main.styl')
-    .pipe(gulpIf(isDevelopment, sourcemaps.init()))
-    .pipe(stylus())
-    .pipe(gulpIf(isDevelopment, sourcemaps.write('.')))
-    .pipe(gulp.dest('public'));
+app.srcScss = path.join(app.destBase, 'src/scss');
+app.destCss = path.join(app.destBase, 'destr/css');
+app.srcJs = path.join(app.destBase, 'src/js');
+app.destrJs = path.join(app.destBase, 'destr/js');
 
+gulp.task('clean', ['cleancss']);
+
+gulp.task('cleancss', function () {
+    return del(app.destCss + '*css*');
 });
 
-gulp.task('clean', function () {
-  return del('public');
+//compile scss to css
+gulp.task('scss', function () {
+    return gulp.src(app.srcScss + '/**/*.scss')
+        .pipe($.plumber())
+        .pipe($.sourcemaps.init())
+        .pipe($.sass({
+            outputStyle: 'expanded',
+            includePaths: ['node_modules/']
+        })).on('error', $.sass.logError)
+        //adding auto-prefixes, minimization and optimization css
+        .pipe(postcss([
+            autoprefixer({ browsers: ["last 3 versions", "IE 10"], }),
+            atImport(),
+            mqpacker(),
+            cssnano()
+        ]))
+        .pipe(debug({title: 'compile:'}))
+        .pipe($.sourcemaps.write('.', {
+            includeContent: false
+        }))
+        .pipe(gulp.dest(app.destCss))
+        .pipe(filter("**/*.css"))
+        .pipe($.livereload());
 });
 
-gulp.task('assets', function () {
-  return gulp.src('frontend/assets/**'/*, {since: gulp.lastRun('assets')}*/)
-    .pipe(cached('styles'))
-    .pipe(newer('public'))
-    .pipe(remember('styles'))
-    .pipe(debug({title: 'assets'}))
-    .pipe(gulp.dest('public'));
+//js task
+gulp.task('js', function () {
+    return gulp.src(app.srcJs + '/*.js')
+        .pipe(babel({
+            presets: ['env'],
+            minified: true,
+            sourceMaps: 'map'
+        }))
+        .pipe(gulp.dest(app.destrJs))
+        .pipe($.livereload());
 });
 
-gulp.task('build', gulp.series(
-  'clean',
-  gulp.parallel('styles', 'assets')
-));
-
+//gulp watch js, scss files changes
 gulp.task('watch', function () {
-  gulp.watch('frontend/styles/**/*.*', gulp.series('styles')).on('unlink', function (filepath) {
-    remember.forget('styles', path.resolve(filepath));
-    delete cached.caches.stylus[path.resolve(filepath)];
-  });
-  gulp.watch('frontend/assets/**/*.*', gulp.series('assets'));
+    $.livereload.listen();
+
+    gulp.watch(app.srcScss + '/**/*.scss', function () {
+        rs('scss');
+    });
+
+    gulp.watch(app.srcJs + '/*.js', function () {
+        rs('js');
+    });
 });
 
-gulp.task('dev', gulp.series('build', 'watch'));
+// Dev tools by default
+gulp.task('default', function () {
+    rs('clean', 'scss', 'js', 'watch');
+});
+
+gulp.task('build', function () {
+    rs('clean', 'scss');
+});
